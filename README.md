@@ -226,3 +226,7 @@ data/                  缓存与 screener.db（不入库）
 欢迎提 Issue 和 Pull Request：报告数据口径问题（某家公司的 FCF、币种、资本开支算错了）、补充新的筛选规则或数据源（须免费、可公开获取）、改进界面。提交前请运行 `make test` 和 `cd frontend && npx tsc -b`。
 
 使用本项目时请遵守各数据源的服务条款：SEC 有访问频率限制（本项目已限速并缓存），Yahoo 和 Google 的接口为非官方接口，仅适合个人研究使用。
+
+## 许可证
+
+[MIT](LICENSE)
