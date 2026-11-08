@@ -258,8 +258,8 @@ export function JudgementPoints({ e, ai, causes, sc, iv, onAllCauses }: {
   const dcf = e.analysis?.reverseDcf;
   const last = e.ttm?.at(-1) ?? e.years.at(-1);
   const trends = e.checks.filter((c) => c.layer === 1 && c.warn);
-  const l1 = e.checks.filter((c) => c.layer === 1 && !c.name.startsWith("趋势"));
-  const trendText = (c: Check) => `${c.name.replace(/^趋势：/, "").replace(/ − 5 年中位$/, "（对比 5 年中位）")} ${c.value}`;
+  const l1 = e.checks.filter((c) => c.layer === 1 && !/^(趋势|去劣)：/.test(c.name));
+  const trendText = (c: Check) => `${c.name.replace(/^(趋势|去劣)：/, "").replace(/ − 5 年中位$/, "（对比 5 年中位）")} ${c.value}`;
 
   const likely: Point[] = causes
     .filter((h) => h.rank >= 2)

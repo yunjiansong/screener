@@ -228,3 +228,47 @@ func TestTodayUsesLatestFX(t *testing.T) {
 		approx(t, "EV", e.Analysis.ReverseDCF.EVUSD, 2500+(700-3500)/6.5)
 	}
 }
+
+// The quality-screen ("去劣") warnings: thin interest cover, profit that doesn't turn into
+// cash and a low gross margin warn, but never fail L1.
+func TestWeedChecks(t *testing.T) {
+	c := &model.Company{CIK: 1, Ticker: "W", Currency: "USD"}
+	for i := range 6 {
+		c.Years = append(c.Years, model.Year{End: time.Date(2020+i, 12, 31, 0, 0, 0, 0, time.UTC).Format(time.DateOnly),
+			Revenue: model.F(1000), GrossProfit: model.F(120), OpIncome: model.F(90), NetIncome: model.F(60), OCF: model.F(36),
+			Interest: model.F(60), FCF: model.F(60), Cash: model.F(100), Debt: model.F(50), Equity: model.F(500), Shares: model.F(10)})
+	}
+	q, checks := quality(c, config.Default().Quality, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))
+	got := map[string]bool{}
+	for _, ch := range checks {
+		if strings.HasPrefix(ch.Name, "去劣：") {
+			if !ch.Pass {
+				t.Errorf("%s failed L1; it should only warn", ch.Name)
+			}
+			got[ch.Name] = ch.Warn
+		}
+	}
+	for _, k := range []string{"去劣：利息覆盖（营业利润 ÷ 利息，近 3 期中位）", "去劣：5 年经营现金流 ÷ 净利润", "去劣：毛利率（5 年中位）"} {
+		if !got[k] {
+			t.Errorf("%s: want a warning; got %v", k, got)
+		}
+	}
+	if q.InterestCover == nil || *q.InterestCover != 1.5 || q.OCFToNI == nil || *q.OCFToNI != 0.6 {
+		t.Errorf("interestCover %v, ocfToNI %v", q.InterestCover, q.OCFToNI)
+	}
+	// One impaired year doesn't make the cover a warning: the median of the last three is used.
+	c.Years[5].OpIncome = model.F(-200)
+	for i := range 5 {
+		c.Years[i].OpIncome = model.F(300)
+	}
+	if v := interestCover(c); v == nil || *v != 5 {
+		t.Errorf("interestCover with one impaired year = %v, want 5", v)
+	}
+	// Losses overall: cash conversion is unknown rather than a warning.
+	for i := range c.Years {
+		c.Years[i].NetIncome = model.F(-10)
+	}
+	if v := ocfToNI(lastN(c.Years, 5)); v != nil {
+		t.Errorf("ocfToNI with losses = %v, want nil", *v)
+	}
+}

@@ -359,7 +359,7 @@ function Header({ e, judgement }: { e: Evaluation; judgement: Judgement | null }
     return (
       <div key={n} className={`pill ${state}`} title={warn ? e.checks.filter((c) => c.layer === n && c.warn).map((c) => `${c.name} ${c.value}`).join("\n") : undefined}>
         <span>{state === "pass" ? "✓" : state === "fail" ? "✕" : state === "warn" ? "!" : "–"}</span>
-        <span>{label}{warn ? " · 趋势预警" : ""}</span>
+        <span>{label}{warn ? " · 预警" : ""}</span>
       </div>
     );
   };
@@ -476,7 +476,7 @@ function Evidence({ e, imputed }: { e: Evaluation; imputed: boolean }) {
               <span className="key">L{n}</span>
               <span className="gtitle">{layerTitles[n]}</span>
               {n === 3 && imputed && <em className="est" title="凸性用到的 FCF 含估算资本开支">估</em>}
-              {trendWarns > 0 && reached && <span className="chip warn">{trendWarns} 项趋势预警</span>}
+              {trendWarns > 0 && reached && <span className="chip warn">{trendWarns} 项预警</span>}
               {warns > 0 && reached && <span className="chip neutral">{warns} 项临界</span>}
               <span className={`sum ${tone}`}>{summary}</span>
             </button>

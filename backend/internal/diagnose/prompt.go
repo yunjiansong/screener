@@ -402,6 +402,15 @@ func buildData(c config.Convexity, e *screen.Evaluation, p *profile.Profile, j *
 		d.Judgement = map[string]any{"结论": map[string]string{"external": "外部错杀", "internal": "内部问题", "unsure": "不确定",
 			"watch": "加入观察", "reject": "排除", "": "未下结论"}[j.Verdict], "市场在担心": j.Worry, "为何是暂时的": j.Why,
 			"证伪条件": j.Falsify, "笔记": j.Note, "更新于": j.UpdatedAt}
+		if j.ReviewOn != "" {
+			d.Judgement["下次复查"] = j.ReviewOn
+		}
+		if len(j.FalsifyRules) > 0 {
+			d.Judgement["量化证伪条件"] = j.FalsifyRules
+		}
+		if s := string(j.Snapshot); s != "" && s != "null" && s != "{}" {
+			d.Judgement["判断时冻结的数据"] = j.Snapshot
+		}
 	}
 	if last != nil && o.has(IncludeLastAI) {
 		var r Result

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { berkshireTemplates } from "./skillTemplates";
 import {
   AIStatus,
   EngineName,
@@ -75,6 +76,7 @@ const templates: { name: string; skill: SkillInput }[] = [
 用 Markdown 输出，表格优先。`,
     },
   },
+  ...berkshireTemplates,
 ];
 
 const emptyInput: SkillInput = templates[0].skill;

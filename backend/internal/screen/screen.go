@@ -69,7 +69,10 @@ type Quality struct {
 	NetDebtToFCF   *float64 `json:"netDebtToFcf"`
 	NetCash        bool     `json:"netCash"`
 	ShareChange    *float64 `json:"shareChange"`
-	Score          float64  `json:"score"`
+	// From ai-berkshire's quality-screen ("去劣" rules); warnings only, never fail L1.
+	InterestCover *float64 `json:"interestCover,omitempty"` // latest operating income ÷ interest expense
+	OCFToNI       *float64 `json:"ocfToNi,omitempty"`       // 5-year Σ operating cash flow ÷ Σ net income
+	Score         float64  `json:"score"`
 }
 
 type Point struct {
@@ -233,6 +236,7 @@ func quality(c *model.Company, r config.Quality, now time.Time) (*Quality, []Che
 			q.ShareChange = model.F(ch)
 		}
 	}
+	q.InterestCover, q.OCFToNI = interestCover(c), ocfToNI(ys)
 	q.Score = qualityScore(q)
 
 	end, _ := time.Parse(time.DateOnly, c.Latest().End)
@@ -247,7 +251,73 @@ func quality(c *model.Company, r config.Quality, now time.Time) (*Quality, []Che
 		{1, "净债务/平均FCF", q.NetCash || (q.NetDebtToFCF != nil && *q.NetDebtToFCF <= r.MaxNetDebtToFCF), netDebtText(q), fmt.Sprintf("≤ %.1fx", r.MaxNetDebtToFCF), !q.NetCash && near(q.NetDebtToFCF, r.MaxNetDebtToFCF, false), false},
 		{1, "质量分", q.Score >= r.MinScore, fmt.Sprintf("%.0f", q.Score), fmt.Sprintf("≥ %.0f", r.MinScore), near(&q.Score, r.MinScore, true), false},
 	}
-	return q, append(checks, trendChecks(c, q)...)
+	checks = append(checks, trendChecks(c, q)...)
+	return q, append(checks, weedChecks(q)...)
+}
+
+// "去劣" warnings, adapted from the quality-screen skill of ai-berkshire (MIT,
+// github.com/xbtlin/ai-berkshire): signs of a business that isn't first-rate. Like the
+// trend checks they only warn; several of its other rules are already L1 rules here.
+const (
+	minInterestCover = 2.0  // operating income ÷ interest expense
+	minOCFToNI       = 0.7  // 5-year cash conversion of profit
+	minGrossMargin   = 0.15 // long-run gross margin: below this, little pricing power
+)
+
+func weedChecks(q *Quality) []Check {
+	var out []Check
+	if v := q.InterestCover; v != nil {
+		out = append(out, Check{Layer: 1, Name: "去劣：利息覆盖（营业利润 ÷ 利息，近 3 期中位）", Pass: true, Value: fmt.Sprintf("%.1f 倍", *v),
+			Rule: fmt.Sprintf("≥ %.0f 倍（预警，不淘汰）", minInterestCover), Warn: *v < minInterestCover})
+	}
+	if v := q.OCFToNI; v != nil {
+		out = append(out, Check{Layer: 1, Name: "去劣：5 年经营现金流 ÷ 净利润", Pass: true, Value: fmt.Sprintf("%.2f", *v),
+			Rule: fmt.Sprintf("≥ %.1f（预警，不淘汰）", minOCFToNI), Warn: *v < minOCFToNI})
+	}
+	if v := q.GrossMargin; v != nil {
+		out = append(out, Check{Layer: 1, Name: "去劣：毛利率（5 年中位）", Pass: true, Value: pct(v),
+			Rule: fmt.Sprintf("≥ %.0f%%（预警，不淘汰）", minGrossMargin*100), Warn: *v < minGrossMargin})
+	}
+	return out
+}
+
+// interestCover: the median of operating income ÷ interest expense over the three latest
+// 12-month periods (fiscal years when the TTM periods lack interest), so a one-off
+// impairment in one period doesn't read as a debt problem.
+func interestCover(c *model.Company) *float64 {
+	cover := func(ys []model.Year) []float64 {
+		var xs []float64
+		for _, y := range ys {
+			if y.OpIncome != nil && y.Interest != nil && *y.Interest > 0 {
+				xs = append(xs, *y.OpIncome / *y.Interest)
+			}
+		}
+		return xs
+	}
+	xs := cover(c.Recent())
+	if len(xs) < 2 {
+		xs = cover(lastN(c.Years, 3))
+	}
+	if len(xs) < 2 {
+		return nil
+	}
+	return median(xs)
+}
+
+// ocfToNI: Σ OCF ÷ Σ net income over the years with both; unknown with fewer than 3 such
+// years or a non-positive total profit (loss years are judged by the FCF rules instead).
+func ocfToNI(ys []model.Year) *float64 {
+	var ocf, ni float64
+	n := 0
+	for _, y := range ys {
+		if y.OCF != nil && y.NetIncome != nil {
+			ocf, ni, n = ocf+*y.OCF, ni+*y.NetIncome, n+1
+		}
+	}
+	if n < 3 || ni <= 0 {
+		return nil
+	}
+	return model.F(ocf / ni)
 }
 
 // Trend warnings (never fail L1): the latest 12 months against the 5-year history that L1
@@ -560,6 +630,12 @@ func hints(e *Evaluation) []Hint {
 		h = append(h, Hint{"internal", "最近 12 个月 FCF 为负"})
 	} else if v := e.Valuation; v != nil && v.LatestFCFvsAvg != nil && *v.LatestFCFvsAvg < 0.7 {
 		h = append(h, Hint{"internal", fmt.Sprintf("最近 12 个月 FCF 只有近3年均值的 %s：要弄清是主动投入还是竞争恶化", pct(v.LatestFCFvsAvg))})
+	}
+	if v := e.Quality.InterestCover; v != nil && *v < minInterestCover {
+		h = append(h, Hint{"internal", fmt.Sprintf("营业利润只够付 %.1f 倍利息（近 3 期中位）：偿债压力大，利润再降就可能出问题", *v)})
+	}
+	if v := e.Quality.OCFToNI; v != nil && *v < minOCFToNI {
+		h = append(h, Hint{"internal", fmt.Sprintf("5 年经营现金流只有净利润的 %.0f%%：利润含金量低，要查应收和存货", *v*100)})
 	}
 	if s := e.Quality.ShareChange; s != nil && *s > 0.10 {
 		h = append(h, Hint{"internal", "5年股本稀释 " + pct(s)})
