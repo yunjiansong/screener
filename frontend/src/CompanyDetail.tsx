@@ -201,14 +201,14 @@ export function CompanyDetail({ ticker, order, listLabel, onOpen, onBack, onSave
               const fold = (k: string) => ({ open: !!folds[k], toggle: () => setFolds((f) => ({ ...f, [k]: !f[k] })) });
               return (
                 <>
-                  {e.valuation && <Kpis e={e} sc={sc} />}
+                  {e.valuation && <Kpis e={e} sc={sc} onRefreshed={() => api.company(ticker).then((r) => setE(r.evaluation))} />}
                   <div className="body">
                     <div className="main">
                       <JudgementPoints e={e} ai={pic} causes={e.valuation ? causes : []} sc={sc} iv={mos?.iv ?? null} onAllCauses={openCauses} />
                       {e.valuation ? <Charts e={e} news={prof.profile?.news ?? []} /> : <div className="card empty">未通过质量层的公司不抓行情，没有股价与估值数据</div>}
                       <Evidence e={e} imputed={sc?.imputed ?? false} />
                       {e.valuation && <PeerCompare ticker={e.ticker} d={peers} />}
-                      <Financials e={e} />
+                      <Financials e={e} onRefreshed={() => api.company(ticker).then((r) => setE(r.evaluation))} />
                       <div className="card folds">
                         <div className="folds-cap">以下默认折叠，每张只显示一行摘要 · 展开状态会记住</div>
                         {e.valuation && (() => {
@@ -524,7 +524,7 @@ function Signals({ e }: { e: Evaluation }) {
   );
 }
 
-function Financials({ e }: { e: Evaluation }) {
+function Financials({ e, onRefreshed }: { e: Evaluation; onRefreshed: () => Promise<unknown> }) {
   // Latest TTM (if a 10-Q is newer than the annual report) on top, then fiscal years.
   const [all, setAll] = useState(false);
   const latestTTM = e.ttm?.length ? e.ttm[e.ttm.length - 1] : null;
@@ -583,6 +583,37 @@ function Financials({ e }: { e: Evaluation }) {
           ))}
         </ul>
       )}
+      <QuarterlyRefresh e={e} onRefreshed={onRefreshed} />
+    </div>
+  );
+}
+
+// Foreign filers (20-F / 40-F) file no 10-Q. The screen sums Yahoo's latest four quarters
+// for those that pass L1; this pulls them for any one company, and later screens keep it.
+function QuarterlyRefresh({ e, onRefreshed }: { e: Evaluation; onRefreshed: () => Promise<unknown> }) {
+  const [state, setState] = useState<"" | "busy" | string>("");
+  const yahoo = e.ttm?.at(-1)?.source === "yahoo";
+  const noQuarters = !e.ttm?.length && (e.notes ?? []).some((n) => n.includes("不提交季报"));
+  if (!yahoo && !noQuarters) return null;
+  const pull = async () => {
+    setState("busy");
+    try {
+      const r = await api.refreshQuarterly(e.ticker);
+      await onRefreshed();
+      const moved = r.stage !== r.prevStage ? `；筛选层级 L${r.prevStage} → L${r.stage}` : "";
+      setState(`已更新到截至 ${r.end} 的 12 个月${moved}。之后每次筛选都会自动拉取。`);
+    } catch (err) {
+      setState(`拉取失败：${String((err as Error).message ?? err)}`);
+    }
+  };
+  return (
+    <div className="quarterly-refresh">
+      <button className="btn small" disabled={state === "busy"} onClick={pull}>
+        {state === "busy" ? "拉取中…" : yahoo ? "重新拉取最新季报（Yahoo）" : "拉取最新季报（Yahoo）"}
+      </button>
+      <span className="small muted">
+        {state && state !== "busy" ? state : "用 Yahoo 最近 4 个季度相加得到最新 12 个月，并按它重新评估这家公司"}
+      </span>
     </div>
   );
 }

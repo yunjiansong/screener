@@ -119,6 +119,12 @@ var specs = map[string]spec{
 	"lt_debt_nc": {gaap: []string{"LongTermDebtNoncurrent"}, ifrs: []string{"LongtermBorrowings"}, instant: true},
 	"lt_debt_c":  {gaap: []string{"LongTermDebtCurrent"}, ifrs: []string{"CurrentPortionOfLongtermBorrowings"}, instant: true},
 	"st_debt":    {gaap: []string{"ShortTermBorrowings", "CommercialPaper"}, ifrs: []string{"ShorttermBorrowings"}, instant: true},
+	"debt_c":     {gaap: []string{"DebtCurrent"}, instant: true}, // current long-term debt + short-term borrowings
+	// Totals that include finance (capital) leases. Only used when no lease-free tag is
+	// filed at all (e.g. Comcast, Fiserv): a small lease share beats reading debt as zero.
+	"debt_lease":      {gaap: []string{"DebtAndCapitalLeaseObligations"}, instant: true},
+	"lt_debt_lease":   {gaap: []string{"LongTermDebtAndCapitalLeaseObligations"}, instant: true}, // noncurrent
+	"lt_debt_lease_c": {gaap: []string{"LongTermDebtAndCapitalLeaseObligationsCurrent"}, instant: true},
 	// ---- extra items for the professional metrics (not used by the screen rules) ----
 	"sbc": {gaap: []string{"ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"},
 		ifrs: []string{"AdjustmentsForSharebasedPayments", "ExpenseFromSharebasedPaymentTransactionsWithEmployees"}},
@@ -323,11 +329,26 @@ func buildCompany(ff factsFile, maxYears int) *model.Company {
 		TTM: buildTTM(facts, conceptsFor, taxonomy, currency, values, years)}
 }
 
-// debt takes the largest of the alternative totals, since a missing component only ever understates.
+// debt takes the largest of the alternative totals, since a missing component only ever
+// understates. Interest-bearing debt excludes leases; lease-inclusive totals are the fallback
+// for filers whose lease-free tags are missing or clearly partial.
 func debt(get func(string, string) *float64, end string) float64 {
 	long := math.Max(orZero(get("lt_debt", end)), orZero(get("lt_debt_nc", end))+orZero(get("lt_debt_c", end)))
-	return math.Max(orZero(get("debt_total", end)), long+orZero(get("st_debt", end)))
+	d := math.Max(orZero(get("debt_total", end)), long+orZero(get("st_debt", end)))
+	if nc := get("lt_debt_nc", end); nc != nil {
+		d = math.Max(d, *nc+orZero(get("debt_c", end)))
+	}
+	cur := math.Max(orZero(get("lt_debt_lease_c", end)), orZero(get("debt_c", end)))
+	withLeases := math.Max(orZero(get("debt_lease", end)), orZero(get("lt_debt_lease", end))+cur)
+	// Finance leases are a small share of debt; a lease-free figure under half the
+	// lease-inclusive total is a partial tag (DPZ files only "other borrowings" as LongTermDebt).
+	if d < withLeases*leasePartial {
+		return withLeases
+	}
+	return d
 }
+
+const leasePartial = 0.5
 
 func maxOf(a, b *float64) *float64 {
 	if a == nil || (b != nil && *b > *a) {

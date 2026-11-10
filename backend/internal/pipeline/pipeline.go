@@ -43,7 +43,11 @@ func Run(ctx context.Context, cfg config.Config, st *store.Store, report func(st
 			report(msg)
 		}
 	}
-	funnel, evals, err := run(ctx, cfg, say)
+	extra, err := st.QuarterlyCIKs()
+	if err != nil {
+		return nil, err
+	}
+	funnel, evals, err := run(ctx, cfg, extra, say)
 	if err == nil {
 		funnel.Seconds = time.Since(started).Seconds()
 		say("保存 %d 条结果", len(evals))
@@ -55,7 +59,9 @@ func Run(ctx context.Context, cfg config.Config, st *store.Store, report func(st
 	return funnel, err
 }
 
-func run(ctx context.Context, cfg config.Config, say func(string, ...any)) (*Funnel, []*screen.Evaluation, error) {
+// extra: companies to fetch market data (and Yahoo quarterly figures) for even when they
+// fail L1 – the ones someone pulled the latest quarters for on the detail page.
+func run(ctx context.Context, cfg config.Config, extra map[int]bool, say func(string, ...any)) (*Funnel, []*screen.Evaluation, error) {
 	cache := filepath.Join(cfg.DataDir, "cache")
 	secClient := fetch.New(cfg.SECUserAgent, cache, 8)
 	yc := yahoo.New(fetch.New("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36", cache, 5))
@@ -91,13 +97,13 @@ func run(ctx context.Context, cfg config.Config, say func(string, ...any)) (*Fun
 		}
 		e := screen.Evaluate(c, nil, cfg, now)
 		evals = append(evals, e)
-		if e.Stage >= 1 || slices.Contains(cfg.AlwaysInclude, c.Ticker) {
+		if e.Stage >= 1 || slices.Contains(cfg.AlwaysInclude, c.Ticker) || extra[c.CIK] {
 			selected = append(selected, c)
 		}
 	}
 	f.WithFundamentals = len(evals)
 
-	fx, err := loadFX(ctx, yc, selected)
+	fx, err := loadFX(ctx, yc, selected, chartAge)
 	if err != nil {
 		return f, nil, err
 	}
@@ -117,7 +123,7 @@ func run(ctx context.Context, cfg config.Config, say func(string, ...any)) (*Fun
 						c.TTM = []model.Year{*y}
 					}
 				}
-				e := screen.Evaluate(c, market(ctx, yc, c, fx), cfg, now)
+				e := screen.Evaluate(c, market(ctx, yc, c, fx, chartAge), cfg, now)
 				mu.Lock()
 				byCIK[c.CIK] = e
 				done++
@@ -160,13 +166,16 @@ func run(ctx context.Context, cfg config.Config, say func(string, ...any)) (*Fun
 	return f, evals, nil
 }
 
-func market(ctx context.Context, yc *yahoo.Client, c *model.Company, fx map[string]*yahoo.Chart) *screen.Market {
+// chartAge is how old a cached monthly chart may be during a screen.
+const chartAge = 20 * time.Hour
+
+func market(ctx context.Context, yc *yahoo.Client, c *model.Company, fx map[string]*yahoo.Chart, maxAge time.Duration) *screen.Market {
 	m := &screen.Market{}
 	if ch := fx[c.Currency]; ch != nil {
 		m.FX, m.FXSpot = ch.Bars, ch.Price
 	}
 	var err error
-	if m.Chart, err = yc.MonthlyChart(ctx, c.Ticker); err != nil {
+	if m.Chart, err = yc.MonthlyChartFresh(ctx, c.Ticker, maxAge); err != nil {
 		m.Errors = append(m.Errors, "行情: "+err.Error())
 	}
 	if m.MarketCap, err = yc.LatestMarketCap(ctx, c.Ticker); err != nil {
@@ -180,13 +189,13 @@ func market(ctx context.Context, yc *yahoo.Client, c *model.Company, fx map[stri
 
 // loadFX fetches monthly "units per USD" history and the latest rate for every non-USD
 // reporting currency.
-func loadFX(ctx context.Context, yc *yahoo.Client, companies []*model.Company) (map[string]*yahoo.Chart, error) {
+func loadFX(ctx context.Context, yc *yahoo.Client, companies []*model.Company, maxAge time.Duration) (map[string]*yahoo.Chart, error) {
 	out := map[string]*yahoo.Chart{}
 	for _, c := range companies {
 		if c.Currency == "USD" || out[c.Currency] != nil {
 			continue
 		}
-		ch, err := yc.MonthlyChart(ctx, c.Currency+"=X")
+		ch, err := yc.MonthlyChartFresh(ctx, c.Currency+"=X", maxAge)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()

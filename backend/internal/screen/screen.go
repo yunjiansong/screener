@@ -249,7 +249,7 @@ func quality(c *model.Company, r config.Quality, now time.Time) (*Quality, []Che
 		{1, "营业利润率(中位)", q.OpMargin == nil || *q.OpMargin >= r.MinOpMargin, pctOr(q.OpMargin, "未披露(不判)"), "≥ " + pct(&r.MinOpMargin), near(q.OpMargin, r.MinOpMargin, true), false},
 		{1, "收入5年复合增速", q.RevenueCAGR == nil || *q.RevenueCAGR >= r.MinRevenueCAGR, pctOr(q.RevenueCAGR, "未知(不判)"), "≥ " + pct(&r.MinRevenueCAGR), near(q.RevenueCAGR, r.MinRevenueCAGR, true), false},
 		{1, "净债务/平均FCF", q.NetCash || (q.NetDebtToFCF != nil && *q.NetDebtToFCF <= r.MaxNetDebtToFCF), netDebtText(q), fmt.Sprintf("≤ %.1fx", r.MaxNetDebtToFCF), !q.NetCash && near(q.NetDebtToFCF, r.MaxNetDebtToFCF, false), false},
-		{1, "质量分", q.Score >= r.MinScore, fmt.Sprintf("%.0f", q.Score), fmt.Sprintf("≥ %.0f", r.MinScore), near(&q.Score, r.MinScore, true), false},
+		{1, "质量分", q.Score >= r.MinScore, scoreText(q.Score, r.MinScore), fmt.Sprintf("≥ %.0f", r.MinScore), near(&q.Score, r.MinScore, true), false},
 	}
 	checks = append(checks, trendChecks(c, q)...)
 	return q, append(checks, weedChecks(q)...)
@@ -318,6 +318,14 @@ func ocfToNI(ys []model.Year) *float64 {
 		return nil
 	}
 	return model.F(ocf / ni)
+}
+
+// scoreText shows one decimal near the threshold, so 49.6 doesn't read as "50, needs ≥ 50".
+func scoreText(s, min float64) string {
+	if math.Abs(s-min) < 1 {
+		return fmt.Sprintf("%.1f", s)
+	}
+	return fmt.Sprintf("%.0f", s)
 }
 
 // Trend warnings (never fail L1): the latest 12 months against the 5-year history that L1

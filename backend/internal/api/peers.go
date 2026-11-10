@@ -211,3 +211,10 @@ func (s *Server) peerPrompt(ticker string) map[string]any {
 		"用途":      "判断下跌是行业性的（同行也跌）还是公司特有的（比同行多跌），以及估值和质量相对同行的位置",
 	}
 }
+
+// reset drops the cached peer rows (one company's evaluation was replaced).
+func (pc *peerCache) reset() {
+	pc.mu.Lock()
+	pc.runID = 0
+	pc.mu.Unlock()
+}

@@ -63,7 +63,32 @@ export function aiPicture(ai: AI): AIPicture {
 
 const Est = ({ on }: { on: boolean }) => (on ? <em className="est" title="依赖估算的资本开支（未在 XBRL 中单列）">估</em> : null);
 
-export function Kpis({ e, sc }: { e: Evaluation; sc: Scenarios | null }) {
+// PriceRefresh: one click re-evaluates the company on Yahoo's latest price.
+function PriceRefresh({ ticker, onRefreshed }: { ticker: string; onRefreshed: () => Promise<unknown> }) {
+  const [state, setState] = useState<"" | "busy" | string>("");
+  const pull = async () => {
+    setState("busy");
+    try {
+      const r = await api.refreshPrice(ticker);
+      await onRefreshed();
+      const moved = r.stage !== r.prevStage ? ` · 筛选层级 L${r.prevStage} → L${r.stage}` : "";
+      const was = r.prevPrice != null && r.price != null && r.prevPrice !== r.price ? `原 $${r.prevPrice.toFixed(2)} · ` : "";
+      setState(`${was}${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 已更新${moved}`);
+    } catch (err) {
+      setState(`更新失败：${String((err as Error).message ?? err)}`);
+    }
+  };
+  return (
+    <>
+      <button className="link-btn" disabled={state === "busy"} onClick={pull} title="从 Yahoo 拉取最新股价，并按它重算估值、上下行和筛选层级（财报数据不变）">
+        {state === "busy" ? "更新中…" : "更新股价"}
+      </button>
+      {state && state !== "busy" && <em className="price-note">{state}</em>}
+    </>
+  );
+}
+
+export function Kpis({ e, sc, onRefreshed }: { e: Evaluation; sc: Scenarios | null; onRefreshed?: () => Promise<unknown> }) {
   const v = e.valuation!;
   const dcf = e.analysis?.reverseDcf;
   const last = e.ttm?.at(-1) ?? e.years.at(-1);
@@ -76,7 +101,7 @@ export function Kpis({ e, sc }: { e: Evaluation; sc: Scenarios | null }) {
   return (
     <div className="card kpis">
       <div className="kpi">
-        <span>现价</span>
+        <span>现价{onRefreshed && <PriceRefresh ticker={e.ticker} onRefreshed={onRefreshed} />}</span>
         <b>${v.price.toFixed(2)} <em className="dd">{pct(v.drawdown)}</em></b>
         <small>较 5 年高点 ${v.high5y.toFixed(2)}</small>
       </div>

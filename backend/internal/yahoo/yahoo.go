@@ -41,7 +41,12 @@ func New(c *fetch.Client) *Client { return &Client{c} }
 
 // MonthlyChart returns ~10 years of monthly closes. symbol is a Yahoo symbol, e.g. "PDD" or "CNY=X".
 func (y *Client) MonthlyChart(ctx context.Context, symbol string) (*Chart, error) {
-	return y.chart(ctx, symbol, "10y", "1mo", "yahoo/chart/"+symbol+".json", 20*time.Hour)
+	return y.MonthlyChartFresh(ctx, symbol, 20*time.Hour)
+}
+
+// MonthlyChartFresh is MonthlyChart with a caller-chosen cache age (a manual price update).
+func (y *Client) MonthlyChartFresh(ctx context.Context, symbol string, maxAge time.Duration) (*Chart, error) {
+	return y.chart(ctx, symbol, "10y", "1mo", "yahoo/chart/"+symbol+".json", maxAge)
 }
 
 // DailyChart returns ~6 months of daily closes, dated in New York time; used to measure

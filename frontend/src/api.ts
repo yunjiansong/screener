@@ -255,6 +255,16 @@ export const api = {
   home: () => fetch("/api/home").then((r) => json<HomeData>(r)),
   earnings: () => fetch("/api/earnings").then((r) => json<Record<string, EarningsDate>>(r)),
   falsifyMetrics: () => fetch("/api/falsify/metrics").then((r) => json<MetricDef[]>(r)),
+  // Foreign filers: the latest four quarters from Yahoo, re-evaluated into the latest run.
+  refreshQuarterly: (ticker: string) =>
+    fetch(`/api/companies/${encodeURIComponent(ticker)}/quarterly`, { method: "POST" }).then((r) =>
+      json<{ end: string; stage: number; prevStage: number }>(r),
+    ),
+  // The latest Yahoo price, re-evaluated into the latest run (financials unchanged).
+  refreshPrice: (ticker: string) =>
+    fetch(`/api/companies/${encodeURIComponent(ticker)}/price`, { method: "POST" }).then((r) =>
+      json<{ price?: number; prevPrice?: number; stage: number; prevStage: number }>(r),
+    ),
 };
 
 export const verdicts: Verdict[] = ["external", "internal", "unsure", "watch", "reject"];

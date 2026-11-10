@@ -90,6 +90,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/companies/{ticker}/skills/{id}/run", s.runSkill)
 	mux.HandleFunc("GET /api/companies/{ticker}/skill-prompt", s.skillPrompt)
 	mux.HandleFunc("DELETE /api/skill-runs/{id}", s.deleteSkillRun)
+	mux.HandleFunc("POST /api/companies/{ticker}/quarterly", s.refreshQuarterly)
+	mux.HandleFunc("POST /api/companies/{ticker}/price", s.refreshPrice)
 	mux.HandleFunc("GET /api/ai/status", s.aiStatus)
 	mux.HandleFunc("PUT /api/ai/settings", s.putAISettings)
 	mux.HandleFunc("POST /api/ai/batch", s.startAIBatch)

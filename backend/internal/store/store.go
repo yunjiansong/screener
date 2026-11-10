@@ -128,6 +128,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(skillsSchema); err != nil {
 		return nil, err
 	}
+	if _, err := db.Exec(quarterlySchema); err != nil {
+		return nil, err
+	}
 	for _, m := range migrations {
 		_, _ = db.Exec(m)
 	}

@@ -291,6 +291,7 @@ textarea::placeholder, input::placeholder { color: var(--ink-7); }
 .frow.h > span.strong { color: var(--ink); }
 .frow .flag { padding: 1px 5px; border-radius: 4px; background: var(--warn-bg); color: var(--warn-ink); }
 .notes { margin: 0; padding: 12px 20px 14px 36px; font-size: 12px; color: var(--ink-5); }
+.quarterly-refresh { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 0 20px 14px; }
 
 .side .sec { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--line-soft); }
 .side-scroll .sec:last-child { border-bottom: none; padding-bottom: 18px; gap: 14px; }
@@ -927,3 +928,8 @@ details.inline[open] { display: block; flex-basis: 100%; }
 .md table { border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .md th, .md td { border: 1px solid var(--line-soft); padding: 5px 9px; text-align: left; vertical-align: top; }
 .md th { background: var(--card-sub); font-weight: 600; color: var(--ink); }
+
+.kpi .link-btn { margin-left: 8px; padding: 0; border: none; background: none; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.kpi .link-btn:hover { text-decoration: underline; }
+.kpi .link-btn:disabled { color: var(--ink-6); cursor: default; text-decoration: none; }
+.kpi .price-note { margin-left: 8px; font-style: normal; color: var(--ink-6); }

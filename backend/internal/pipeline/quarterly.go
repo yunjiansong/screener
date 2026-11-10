@@ -76,8 +76,13 @@ func yahooTTM(ctx context.Context, yc *yahoo.Client, c *model.Company) (*model.Y
 	}
 	y := model.Year{End: end, TTM: true, Source: "yahoo", Revenue: sum4("TotalRevenue"), GrossProfit: sum4("GrossProfit"),
 		OpIncome: sum4("OperatingIncome"), NetIncome: sum4("NetIncome"), OCF: sum4("OperatingCashFlow")}
-	if y.Revenue == nil || y.OCF == nil {
-		return nil, fmt.Errorf("Yahoo 季度数据不连续")
+	switch {
+	case y.Revenue == nil:
+		return nil, fmt.Errorf("Yahoo 的季度收入不是连续 4 个季度")
+	case len(pick("OperatingCashFlow")) == 0:
+		return nil, fmt.Errorf("Yahoo 没有这家公司的季度现金流（截至 %s 的季度只有利润表），算不出最新 12 个月的 FCF", end)
+	case y.OCF == nil:
+		return nil, fmt.Errorf("Yahoo 的季度经营现金流不是连续 4 个季度")
 	}
 	// Units sanity check against the SEC annual report (catches ADS/thousands mix-ups).
 	if fy.Revenue != nil && *fy.Revenue > 0 {
